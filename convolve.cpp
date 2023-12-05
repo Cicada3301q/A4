@@ -33,9 +33,7 @@ void printWAVHeader(const WavHeader& header) {
     // std::cout << "subchunk2Size: " << header.subchunk2_size << std::endl;
 }
 
-/**
- * Read the tones and call convolve on them
- */
+
 void readTone(const char *sampleTone, const char *impulseTone, const char *outputFile) {
     std::cout << "in read" << std::endl;
     std::ifstream sampleFileStream(sampleTone, std::ios::binary);
@@ -57,20 +55,32 @@ void readTone(const char *sampleTone, const char *impulseTone, const char *outpu
     std::cout << "\nImpulse Tone Header:" << std::endl;
     printWAVHeader(header_impulse);
     if (header_sample.subchunk1_size != 16) {
-        // Eliminate Null Bytes
-        std::cout << "subchunk bigger than 16" << std::endl;
-        int remainder = header_sample.subchunk1_size - 16;
-        char randomVar[remainder];
-        sampleFileStream.read(randomVar, remainder);
-        outputFileStream.write(randomVar, remainder);
-    }
+          std::cout << "subchunk1 is larger than expected. Skipping extra bytes!" << std::endl;
+        
+            // Calculate the number of extra bytes to skip
+            int remainder = header_sample.subchunk1_size - 16;
+            
+            // Create a buffer to read and write the extra bytes
+            std::vector<char> extraData(remainder);
+            
+            // Read the extra bytes from input file
+            sampleFileStream.read(extraData.data(), remainder);
+            
+            // Write the extra bytes to output file
+            outputFileStream.write(extraData.data(), remainder);
+        }
 
     if (header_impulse.subchunk1_size != 16) {
-        // Eliminate Null Bytes
-        std::cout << "subchunk 2 bigger than 16" << std::endl;
+        std::cout << "subchunk1 is larger than expected. Skipping extra bytes!" << std::endl;
+        
+        // Calculate the number of extra bytes to skip
         int remainder = header_impulse.subchunk1_size - 16;
-        char randomVar[remainder];
-        impulseFileStream.read(randomVar, remainder);
+        
+        // Create a buffer to read and write the extra bytes
+        std::vector<char> extraData(remainder);
+        
+        // Read the extra bytes from input file
+        impulseFileStream.read(extraData.data(), remainder);
     }
 
     char subchunk2_id_sample[4];
@@ -89,28 +99,12 @@ void readTone(const char *sampleTone, const char *impulseTone, const char *outpu
     int num_samples = subchunk2_size_sample / (header_sample.bits_per_sample / 8);
     int num_impulse = subchunk2_size_impulse / (header_impulse.bits_per_sample / 8);
 
-}
+    // Read and write audio data
+    std::vector<char> buffer(subchunk2_size_sample);
+    sampleFileStream.read(buffer.data(), subchunk2_size_sample);
+    outputFileStream.write(buffer.data(), subchunk2_size_sample);
 
-int main(int argc, char *argv[]) {
-    const char *sampleTone = nullptr;
-    const char *impulseTone = nullptr;
-    const char *outputFile = nullptr;
 
-    /* Process the command line arguments */
-    if (argc == 4) {
-        /* Set pointers to the input filenames */
-        sampleTone = argv[1];
-        impulseTone = argv[2];
-        outputFile = argv[3];
-
-    } else {
-        /* The user did not supply the correct number of command-line arguments */
-        std::cerr << "Usage: " << argv[0] << " sampleTone impulseTone" << std::endl;
-        return -1;
-    }
-    std::cout << "Read tone:" << std::endl;
-    readTone(sampleTone, impulseTone, outputFile);
-    return 0;
 }
 
 /*
@@ -142,4 +136,33 @@ void convolve(float x[], int N, float h[], int M, float y[], int P)
             y[n+m] += x[n] * h[m];
         }
     }
+}
+
+float bytesToFloat(char firstByte, char secondByte) {
+    // Convert two bytes to one short (little endian)
+    short s = static_cast<short>((secondByte << 8) | firstByte);
+    // Convert to range from -1 to (just below) 1
+    return static_cast<float>(s) / 32768.0f;
+}
+
+int main(int argc, char *argv[]) {
+    const char *sampleTone = nullptr;
+    const char *impulseTone = nullptr;
+    const char *outputFile = nullptr;
+
+    /* Process the command line arguments */
+    if (argc == 4) {
+        /* Set pointers to the input filenames */
+        sampleTone = argv[1];
+        impulseTone = argv[2];
+        outputFile = argv[3];
+
+    } else {
+        /* The user did not supply the correct number of command-line arguments */
+        std::cerr << "Usage: " << argv[0] << " sampleTone impulseTone" << std::endl;
+        return -1;
+    }
+    std::cout << "Read tone:" << std::endl;
+    readTone(sampleTone, impulseTone, outputFile);
+    return 0;
 }
