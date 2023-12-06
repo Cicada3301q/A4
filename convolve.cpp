@@ -155,34 +155,38 @@ void readTone(const char *sampleTone, const char *impulseTone, const char *outpu
     // Assuming each audio sample is represented by 2 bytes (16-bit)
     sampleFileStream.read(reinterpret_cast<char*>(sampleShortData.data()), num_samples * sizeof(short));
     for (int i = 0; i < num_samples; i++) {
-        // std::cout << "Read tone before :" << sampleShortData[i] << std::endl;
+        // std::cout << "Sample Data :" << sampleShortData[i] << std::endl;
         sampleFloatData[i] = sampleShortData[i]/32768.0f;
         // std::cout << "Read tone after:" << sampleFloatData[i] << std::endl;
     }
 
     // // Read impulse audio data
     std::vector<float> impulseData(num_impulse);
+    std::vector<short> impulseShortData(num_impulse);
     impulseData.resize(num_impulse);
-    impulseFileStream.read(reinterpret_cast<char*>(impulseData.data()), num_impulse * sizeof(short));
-    // for (int i = 0; i < num_impulse; i++) {
-    //     std::cout << "Read tone before :" << impulseData[i] << std::endl;
-    //     impulseData[i] = bytesToFloat(impulseData[i]);
-    //     std::cout << "Read tone before :" << impulseData[i] << std::endl;
-    // }
+    impulseShortData.resize(num_impulse);
+    impulseFileStream.read(reinterpret_cast<char*>(impulseShortData.data()), num_impulse * sizeof(short));
+    for (int i = 0; i < num_impulse; i++) {
+        // std::cout << "impulse data:" << impulseShortData[i] << std::endl;
+        impulseData[i] = impulseShortData[i]/32768.0f;
+        // std::cout << "impulse data after :" << impulseData[i] << std::endl;
+    }
     // Perform convolution
     int convolvedSize = num_samples + num_impulse - 1;
     std::vector<float> convolvedData(convolvedSize);
-    convolve(sampleFloatData.data(), num_samples, impulseData.data(), num_impulse, convolvedData.data(), convolvedSize);
+   convolve(sampleFloatData.data(), num_samples, impulseData.data(), num_impulse, convolvedData.data(), convolvedSize);
 
     std::vector<short> convolvedShortData(convolvedData.size());
 
     // Convert float data to shorts
     for (size_t i = 0; i < convolvedData.size(); ++i) {
         float sample = convolvedData[i];
+        // std::cout << "Sample :" << convolvedData[i] << std::endl;
         // Assuming sample is in the range [-1.0, 1.0], scale it back to [-32768, 32767]
         short convertedSample = static_cast<short>(sample * 32767.0f);
         // Store the converted sample in the short array
         convolvedShortData[i] = convertedSample;
+        // std::cout << "Read tone before :" << convolvedShortData[i] << std::endl;
     }
 
 
