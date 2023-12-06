@@ -33,6 +33,41 @@ void printWAVHeader(const WavHeader& header) {
     // std::cout << "subchunk2Size: " << header.subchunk2_size << std::endl;
 }
 
+/*
+    The function convolve takes six arguments: 
+        Two input arrays x[] and h[], their respective sizes N and M, and an output array y[] with size P.
+
+    The first loop initializes the output array y[] to zero. 
+        This is necessary because the convolution operation involves accumulating values in y[].
+
+    The second loop (outer loop) iterates over each element of the input array x[].
+
+    The third loop (inner loop) iterates over each element of the array h[]. 
+        For each pair of elements x[n] and h[m], it adds their sum to the corresponding element in y[].
+*/
+void convolve(float x[], int N, float h[], int M, float y[], int P)
+{
+    int n,m;
+
+    /* Clear Output Buffer y[] */
+    for (n=0; n < P; n++)
+    {
+        y[n] = 0.0;
+    }
+
+    /* Outer Loop: process each input value x[n] in turn */
+    for (n=0; n<N; n++){
+        /* Inner loop: process x[n] with each sample of h[n] */
+        for (m=0; m<M; m++){
+            y[n+m] += x[n] * h[m];
+        }
+    }
+}
+
+float bytesToFloat(short s) {
+    return static_cast<float>(s) / 32768.0f;
+}
+
 
 void readTone(const char *sampleTone, const char *impulseTone, const char *outputFile) {
     std::cout << "in read" << std::endl;
@@ -42,6 +77,7 @@ void readTone(const char *sampleTone, const char *impulseTone, const char *outpu
     std::cout << "past if" << std::endl;
     WavHeader header_sample;
     WavHeader header_impulse;
+
 
     // Read the header subchunk 1 and write the header into a new file
     sampleFileStream.read(reinterpret_cast<char*>(&header_sample), sizeof(header_sample));
@@ -96,54 +132,67 @@ void readTone(const char *sampleTone, const char *impulseTone, const char *outpu
     outputFileStream.write(subchunk2_id_sample, sizeof(subchunk2_id_sample));
     outputFileStream.write(reinterpret_cast<char*>(&subchunk2_size_sample), sizeof(subchunk2_size_sample));
 
+        std::cout << "subchunk2_id: ";
+        for (int i = 0; i < 4; ++i) {
+            std::cout << subchunk2_id_sample[i];
+        }
+    std::cout << std::endl;
+
+    // Printing subchunk2_size
+    std::cout << "subchunk2_size: " << subchunk2_size_sample << std::endl;
+
     int num_samples = subchunk2_size_sample / (header_sample.bits_per_sample / 8);
     int num_impulse = subchunk2_size_impulse / (header_impulse.bits_per_sample / 8);
 
-    // Read and write audio data
+
+    // Audio vectors for convolution
+    const int bytesPerSample = header_sample.bits_per_sample / 8;
+    std::vector<short> sampleShortData(num_samples);
+    std::vector<float> sampleFloatData(num_samples);
+    // Read sample audio data
+    sampleShortData.resize(num_samples);
+    sampleFloatData.resize(num_samples);
+    // Assuming each audio sample is represented by 2 bytes (16-bit)
+    sampleFileStream.read(reinterpret_cast<char*>(sampleShortData.data()), num_samples * sizeof(short));
+    for (int i = 0; i < num_samples; i++) {
+        // std::cout << "Read tone before :" << sampleShortData[i] << std::endl;
+        sampleFloatData[i] = sampleShortData[i]/32768.0f;
+        // std::cout << "Read tone after:" << sampleFloatData[i] << std::endl;
+    }
+
+    // // Read impulse audio data
+    std::vector<float> impulseData(num_impulse);
+    impulseData.resize(num_impulse);
+    impulseFileStream.read(reinterpret_cast<char*>(impulseData.data()), num_impulse * sizeof(short));
+    // for (int i = 0; i < num_impulse; i++) {
+    //     std::cout << "Read tone before :" << impulseData[i] << std::endl;
+    //     impulseData[i] = bytesToFloat(impulseData[i]);
+    //     std::cout << "Read tone before :" << impulseData[i] << std::endl;
+    // }
+    // Perform convolution
+    int convolvedSize = num_samples + num_impulse - 1;
+    std::vector<float> convolvedData(convolvedSize);
+    convolve(sampleFloatData.data(), num_samples, impulseData.data(), num_impulse, convolvedData.data(), convolvedSize);
+
+    std::vector<short> convolvedShortData(convolvedData.size());
+
+    // Convert float data to shorts
+    for (size_t i = 0; i < convolvedData.size(); ++i) {
+        float sample = convolvedData[i];
+        // Assuming sample is in the range [-1.0, 1.0], scale it back to [-32768, 32767]
+        short convertedSample = static_cast<short>(sample * 32767.0f);
+        // Store the converted sample in the short array
+        convolvedShortData[i] = convertedSample;
+    }
+
+
+    // outputFileStream.write(reinterpret_cast<char*>(&convolvedSizeInBytes), sizeof(int));
     std::vector<char> buffer(subchunk2_size_sample);
-    sampleFileStream.read(buffer.data(), subchunk2_size_sample);
-    outputFileStream.write(buffer.data(), subchunk2_size_sample);
-
+    // Write convolved audio data
+    outputFileStream.write(reinterpret_cast<char*>(convolvedShortData.data()), subchunk2_size_sample);
 
 }
 
-/*
-    The function convolve takes six arguments: 
-        Two input arrays x[] and h[], their respective sizes N and M, and an output array y[] with size P.
-
-    The first loop initializes the output array y[] to zero. 
-        This is necessary because the convolution operation involves accumulating values in y[].
-
-    The second loop (outer loop) iterates over each element of the input array x[].
-
-    The third loop (inner loop) iterates over each element of the array h[]. 
-        For each pair of elements x[n] and h[m], it adds their sum to the corresponding element in y[].
-*/
-void convolve(float x[], int N, float h[], int M, float y[], int P)
-{
-    int n,m;
-
-    /* Clear Output Buffer y[] */
-    for (n=0; n < P; n++)
-    {
-        y[n] = 0.0;
-    }
-
-    /* Outer Loop: process each input value x[n] in turn */
-    for (n=0; n<N; n++){
-        /* Inner loop: process x[n] with each sample of h[n] */
-        for (m=0; m<M; m++){
-            y[n+m] += x[n] * h[m];
-        }
-    }
-}
-
-float bytesToFloat(char firstByte, char secondByte) {
-    // Convert two bytes to one short (little endian)
-    short s = static_cast<short>((secondByte << 8) | firstByte);
-    // Convert to range from -1 to (just below) 1
-    return static_cast<float>(s) / 32768.0f;
-}
 
 int main(int argc, char *argv[]) {
     const char *sampleTone = nullptr;
